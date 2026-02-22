@@ -1,0 +1,75 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# ZEUS MYAADE MONITOR - DOCKER COMPOSE STACK
+# ═══════════════════════════════════════════════════════════════════════════
+
+version: '3.8'
+
+services:
+  myaade-monitor:
+    build: .
+    container_name: zeus-myaade-monitor
+    restart: unless-stopped
+    
+    environment:
+      # MyAADE Credentials (REQUIRED - set in .env file)
+      - MYAADE_USERNAME=${MYAADE_USERNAME}
+      - MYAADE_PASSWORD=${MYAADE_PASSWORD}
+      - MYAADE_TAXISNET_CODE=${MYAADE_TAXISNET_CODE:-}
+      
+      # Notification Webhooks
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - WEBHOOK_URL=${WEBHOOK_URL:-}
+      
+      # Configuration
+      - CHECK_INTERVAL_SECONDS=${CHECK_INTERVAL_SECONDS:-300}
+      - HEADLESS_MODE=${HEADLESS_MODE:-true}
+      - TRACKED_PROTOCOLS=${TRACKED_PROTOCOLS:-214142}
+      - TRACK_ALL_PROTOCOLS=${TRACK_ALL_PROTOCOLS:-true}
+      
+      # Paths (container paths)
+      - MYAADE_DB_PATH=/app/data/myaade_monitor.db
+      - SCREENSHOT_DIR=/app/screenshots
+      - LOG_DIR=/app/logs
+      - CHROME_BINARY=/usr/bin/chromium
+      - CHROMEDRIVER_PATH=/usr/bin/chromedriver
+    
+    volumes:
+      # Persistent data storage
+      - ./data:/app/data
+      - ./screenshots:/app/screenshots
+      - ./logs:/app/logs
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # Security
+    security_opt:
+      - no-new-privileges:true
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sqlite3; conn = sqlite3.connect('/app/data/myaade_monitor.db'); conn.close()"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  data:
+  screenshots:
+  logs:
