@@ -119,7 +119,7 @@ class Config:
 
     # MyAADE URLs
     MYAADE_BASE: str = "https://www1.aade.gr/taxisnet"
-    MYAADE_LOGIN: str = "https://login.gsis.gr/myaade/login.jsp"
+    MYAADE_LOGIN: str = "https://login.gsis.gr/mylogin/login.jsp"
     MYAADE_PROTOCOLS: str = "https://www1.aade.gr/taxisnet/protocols"
 
 config = Config()
