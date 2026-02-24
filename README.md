@@ -4,6 +4,7 @@
 ![Dependencies](https://img.shields.io/badge/dependencies-0%20vulnerabilities-success)
 ![Branch Protection](https://img.shields.io/badge/branch%20protection-active-success)
 ![CodeQL](https://img.shields.io/badge/CodeQL-passing-success)
+![Tests](https://github.com/alexandros-thomson/zeus-myaade-monitor/actions/workflows/tests.yml/badge.svg)
 
 **Automated monitoring system that ENDS THE ΦΑΥΛΟΣ ΚΥΚΛΟΣ (vicious circle) of Greek bureaucracy.**
 
@@ -182,6 +183,30 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR/WEBHOOK
 - [Production Setup](docs/production-setup.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
+
+## Testing
+
+Zeus uses **pytest** for automated testing. The test suite covers the core monitor engine and the email integration system.
+
+### Run Tests Locally
+
+```bash
+# Install test dependencies
+pip install pytest pytest-cov selenium requests python-dotenv colorama
+
+# Run all tests
+python -m pytest tests/ -v
+
+# Run with coverage
+python -m pytest tests/ -v --cov=. --cov-report=term-missing
+
+# Run specific test file
+python -m pytest tests/test_email_integration.py -v
+```
+
+### CI/CD
+
+Tests run automatically on every push and pull request via GitHub Actions across Python 3.10, 3.11, and 3.12.
 ## Security
 
 ### Production Security Status (Verified Feb 22, 2026)
