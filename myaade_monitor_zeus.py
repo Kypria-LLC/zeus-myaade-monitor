@@ -99,8 +99,8 @@ class Config:
     RETRY_DELAY: int = int(os.getenv("RETRY_DELAY_SECONDS", "60"))
 
     # Browser config
-    HEADLESS: bool = os.getenv("HEADLESS_MODE", "true").lower() == "true"
-    CHROME_BINARY: str = os.getenv("CHROME_BINARY", "/usr/bin/chromium")
+    HEADLESS: bool = os.getenv("HEADLESS_MODE", "true").lower() not in ["false", "0", "no"]
+    CHROME_BINARY: str = os.getenv("CHROME_BINARY", "")
 
     # Protocol tracking
     TRACKED_PROTOCOLS: List[str] = [
@@ -125,8 +125,10 @@ class Config:
 
     # MyAADE URLs -- GSIS OAuth login portal
     MYAADE_BASE: str = "https://www1.aade.gr/taxisnet"
-    MYAADE_LOGIN_ENTRY: str = "https://login.gsis.gr/mylogin/login.jsp"
-    MYAADE_PROTOCOLS: str = "https://www1.aade.gr/taxisnet/protocols"
+    MYAADE_LOGIN_ENTRY: str = "https://www1.aade.gr/taxisnet/mytaxisnet"
+    MYAADE_INBOX: str = "https://www1.aade.gr/taxisnet/mymessages/protected/inbox.htm"
+    MYAADE_VIEW_MESSAGE: str = "https://www1.aade.gr/taxisnet/mymessages/protected/viewMessage.htm"
+    MYAADE_APPLICATIONS: str = "https://www1.aade.gr/taxisnet/mytaxisnet/protected/applications.htm"
 
 config = Config()
 
@@ -411,8 +413,6 @@ class ZeusMonitor:
         options.add_argument("--lang=el-GR")
         options.add_argument("--disable-extensions")
         options.add_argument("--disable-infobars")
-        if config.CHROME_BINARY:
-            options.binary_location = config.CHROME_BINARY
 
         # Use webdriver-manager to automatically download and manage ChromeDriver
         service = Service(ChromeDriverManager().install())
@@ -534,8 +534,7 @@ class ZeusMonitor:
                     lambda d: any(kw in d.current_url for kw in [
                         "taxisnet", "myaade", "aade.gr", "applications.htm",
                     ]),
-                    timeout=45
-                )
+                    )
                 logger.info("TaxisNet login successful (URL: %s)", self.driver.current_url)
                 return True
             except TimeoutException:
@@ -633,14 +632,14 @@ class ZeusMonitor:
 
         try:
             # Navigate to protocols page
-            self.driver.get(config.MYAADE_PROTOCOLS)
+            self.driver.get(config.MYAADE_INBOX)
             wait = WebDriverWait(self.driver, 20)
 
             # Search for the protocol number
             try:
                 search_input = wait.until(
                     EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, "input[type='text'], input[name*='protocol'], #protocolSearch")
+                        (By.CSS_SELECTOR, "#searchResults td a, #searchResults td")
                     )
                 )
                 search_input.clear()
@@ -648,13 +647,13 @@ class ZeusMonitor:
 
                 # Click search button
                 search_btn = self.driver.find_element(
-                    By.CSS_SELECTOR, "button[type='submit'], .search-btn, #searchBtn"
+                    By.CSS_SELECTOR, "#searchResults"
                 )
                 search_btn.click()
                 time.sleep(3)
 
             except (TimeoutException, NoSuchElementException):
-                logger.warning("Protocol search UI not found, reading page directly")
+                logger.warning("Inbox table not found, reading page directly")
 
             # Get page content for analysis
             page_source = self.driver.page_source
@@ -664,7 +663,7 @@ class ZeusMonitor:
             # Extract status text from common elements
             try:
                 status_elements = self.driver.find_elements(
-                    By.CSS_SELECTOR, ".status, .protocol-status, td, .result-text, .response"
+                    By.CSS_SELECTOR, "#searchResults td, .message-body, .msg-content"
                 )
                 texts = [el.text.strip() for el in status_elements if el.text.strip()]
                 combined_text = " ".join(texts)
