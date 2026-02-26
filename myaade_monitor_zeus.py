@@ -11,7 +11,7 @@ Part of the Justice for John Automation System.
 Case: EPPO PP.00179/2026/EN | FBI IC3 | IRS CI Art. 26
 
 Author: Kostas Kyprianos / Kypria Technologies
-Date: February 22, 2026
+Date: February 25, 2026
 License: MIT
 """
 from __future__ import annotations
@@ -117,9 +117,16 @@ class Config:
     AFM_STAMATINA: str = "044594747"
     AFM_JOHN_DECEASED: str = "051422558"
 
-    # MyAADE URLs
+    # MyAADE URLs -- GSIS OAuth login portal
     MYAADE_BASE: str = "https://www1.aade.gr/taxisnet"
-    MYAADE_LOGIN: str = "https://login.gsis.gr/mylogin/login.jsp"
+    MYAADE_LOGIN: str = (
+        "https://login.gsis.gr/mylogin/login.jsp"
+        "?contextType=external"
+        "&challenge_url=https%3A%2F%2Flogin.gsis.gr%2Fmylogin%2Flogin.jsp"
+        "&ssoCookie=disablehttponly"
+        "&locale=en_US"
+        "&resource_url=https%253A%252F%252Fwww1.aade.gr%252Ftaxisnet%252Fmytaxisnet%252Fprotected%252Fapplications.htm"
+    )
     MYAADE_PROTOCOLS: str = "https://www1.aade.gr/taxisnet/protocols"
 
 config = Config()
@@ -129,31 +136,31 @@ config = Config()
 # ---------------------------------------------------------------------------
 DEFLECTION_PATTERNS = {
     "forwarded": {
-        "keywords_el": ["διαβιβάστηκε", "προωθήθηκε", "αρμόδια υπηρεσία"],
+        "keywords_el": ["\u03b4\u03b9\u03b1\u03b2\u03b9\u03b2\u03ac\u03c3\u03c4\u03b7\u03ba\u03b5", "\u03c0\u03c1\u03bf\u03c9\u03b8\u03ae\u03b8\u03b7\u03ba\u03b5", "\u03b1\u03c1\u03bc\u03cc\u03b4\u03b9\u03b1 \u03c5\u03c0\u03b7\u03c1\u03b5\u03c3\u03af\u03b1"],
         "keywords_en": ["forwarded", "referred to", "competent authority"],
         "severity": "HIGH",
         "description": "Protocol forwarded to another agency (deflection)",
     },
     "under_review": {
-        "keywords_el": ["εξετάζεται", "υπό επεξεργασία", "σε εξέλιξη"],
+        "keywords_el": ["\u03b5\u03be\u03b5\u03c4\u03ac\u03b6\u03b5\u03c4\u03b1\u03b9", "\u03c5\u03c0\u03cc \u03b5\u03c0\u03b5\u03be\u03b5\u03c1\u03b3\u03b1\u03c3\u03af\u03b1", "\u03c3\u03b5 \u03b5\u03be\u03ad\u03bb\u03b9\u03be\u03b7"],
         "keywords_en": ["under review", "processing", "in progress"],
         "severity": "WATCH",
         "description": "Generic 'under review' status (possible stalling)",
     },
     "no_jurisdiction": {
-        "keywords_el": ["αναρμόδιο", "δεν υπάγεται", "δεν εμπίπτει"],
+        "keywords_el": ["\u03b1\u03bd\u03b1\u03c1\u03bc\u03cc\u03b4\u03b9\u03bf", "\u03b4\u03b5\u03bd \u03c5\u03c0\u03ac\u03b3\u03b5\u03c4\u03b1\u03b9", "\u03b4\u03b5\u03bd \u03b5\u03bc\u03c0\u03af\u03c0\u03c4\u03b5\u03b9"],
         "keywords_en": ["no jurisdiction", "not competent", "outside scope"],
         "severity": "CRITICAL",
         "description": "Agency claims no jurisdiction (hard deflection)",
     },
     "responded": {
-        "keywords_el": ["απαντήθηκε", "ολοκληρώθηκε", "διεκπεραιώθηκε"],
+        "keywords_el": ["\u03b1\u03c0\u03b1\u03bd\u03c4\u03ae\u03b8\u03b7\u03ba\u03b5", "\u03bf\u03bb\u03bf\u03ba\u03bb\u03b7\u03c1\u03ce\u03b8\u03b7\u03ba\u03b5", "\u03b4\u03b9\u03b5\u03ba\u03c0\u03b5\u03c1\u03b1\u03b9\u03ce\u03b8\u03b7\u03ba\u03b5"],
         "keywords_en": ["answered", "completed", "resolved"],
         "severity": "CRITICAL",
         "description": "Marked as 'answered' -- verify actual resolution",
     },
     "archived": {
-        "keywords_el": ["αρχειοθετήθηκε", "τέθηκε στο αρχείο"],
+        "keywords_el": ["\u03b1\u03c1\u03c7\u03b5\u03b9\u03bf\u03b8\u03b5\u03c4\u03ae\u03b8\u03b7\u03ba\u03b5", "\u03c4\u03ad\u03b8\u03b7\u03ba\u03b5 \u03c3\u03c4\u03bf \u03b1\u03c1\u03c7\u03b5\u03af\u03bf"],
         "keywords_en": ["archived", "filed away"],
         "severity": "CRITICAL",
         "description": "Protocol archived without resolution",
@@ -378,44 +385,96 @@ class ZeusMonitor:
         logger.info("WebDriver created (headless=%s)", config.HEADLESS)
         return driver
 
+    def _find_login_button(self, wait: WebDriverWait):
+        """Find the GSIS login submit button using multiple fallback selectors.
+
+        The GSIS portal (login.gsis.gr) uses:
+          <button type='submit' name='btn_login' class='... btn ...'>
+        This method tries several selectors in order so the monitor
+        survives future HTML changes on the GSIS side.
+        """
+        selectors = [
+            (By.NAME, "btn_login"),
+            (By.CSS_SELECTOR, "button[type='submit']"),
+            (By.CSS_SELECTOR, "button.btn"),
+            (By.ID, "loginBtn"),
+            (By.CSS_SELECTOR, "input[type='submit']"),
+            (By.XPATH, "//button[contains(text(),'\u03a3\u03cd\u03bd\u03b4\u03b5\u03c3\u03b7')]"),
+            (By.XPATH, "//button[contains(text(),'Login')]"),
+        ]
+        for by, selector in selectors:
+            try:
+                element = wait.until(EC.element_to_be_clickable((by, selector)))
+                logger.info("Login button found via %s='%s'", by, selector)
+                return element
+            except (TimeoutException, NoSuchElementException):
+                continue
+        raise NoSuchElementException(
+            "Could not find login button with any known selector: "
+            + ", ".join(f"{by}={sel}" for by, sel in selectors)
+        )
+
     def _login_taxisnet(self) -> bool:
-        """Authenticate via TaxisNet OAuth (GSIS login)."""
+        """Authenticate via TaxisNet OAuth (GSIS login).
+
+        GSIS login form (login.gsis.gr):
+          - Username field: <input id='username' name='username'>
+          - Password field: <input id='password' name='password'>
+          - Submit button:  <button type='submit' name='btn_login'>
+          - Form action:    /oam/server/auth_cred_submit
+        """
         if not config.MYAADE_USERNAME or not config.MYAADE_PASSWORD:
-            logger.error("Missing MYAADE credentials")
+            logger.error("Missing MYAADE credentials in .env")
             return False
 
         try:
-            logger.info("Navigating to MyAADE login...")
+            logger.info("Navigating to GSIS login page...")
             self.driver.get(config.MYAADE_LOGIN)
             wait = WebDriverWait(self.driver, 30)
 
-            # Wait for username field
+            # Wait for and fill username
             username_field = wait.until(
                 EC.presence_of_element_located((By.ID, "username"))
             )
             username_field.clear()
             username_field.send_keys(config.MYAADE_USERNAME)
+            logger.info("Username entered")
 
-            # Password field
-            password_field = self.driver.find_element(By.ID, "password")
+            # Fill password
+            password_field = wait.until(
+                EC.presence_of_element_located((By.ID, "password"))
+            )
             password_field.clear()
             password_field.send_keys(config.MYAADE_PASSWORD)
+            logger.info("Password entered")
 
-            # Submit login form
-            submit_btn = self.driver.find_element(By.ID, "loginBtn")
+            # Find and click submit button (multi-selector fallback)
+            submit_btn = self._find_login_button(wait)
             submit_btn.click()
+            logger.info("Login form submitted, waiting for redirect...")
 
-            # Wait for redirect to MyAADE dashboard
-            wait.until(lambda d: "taxisnet" in d.current_url or "myaade" in d.current_url)
-            logger.info("TaxisNet login successful")
+            # Wait for redirect to MyAADE / TaxisNet dashboard
+            wait.until(
+                lambda d: any(kw in d.current_url for kw in [
+                    "taxisnet", "myaade", "aade.gr", "applications.htm",
+                ])
+            )
+            logger.info("TaxisNet login successful (URL: %s)", self.driver.current_url)
             return True
 
         except TimeoutException:
             logger.error("Login timed out -- check credentials or portal availability")
-            capture_screenshot(self.driver, "login_failure", config.SCREENSHOT_DIR)
+            logger.error("Current URL: %s", self.driver.current_url)
+            logger.error("Page title: %s", self.driver.title)
+            capture_screenshot(self.driver, "login_timeout", config.SCREENSHOT_DIR)
+            return False
+        except NoSuchElementException as e:
+            logger.error("Login element not found: %s", e)
+            capture_screenshot(self.driver, "login_element_missing", config.SCREENSHOT_DIR)
             return False
         except Exception as e:
             logger.error("Login failed: %s", e)
+            capture_screenshot(self.driver, "login_failure", config.SCREENSHOT_DIR)
             return False
 
     def _get_previous_status(self, protocol_num: str) -> Optional[str]:
@@ -484,7 +543,7 @@ class ZeusMonitor:
                     By.CSS_SELECTOR, "button[type='submit'], .search-btn, #searchBtn"
                 )
                 search_btn.click()
-                time.sleep(3)  # Wait for results to load
+                time.sleep(3)
 
             except (TimeoutException, NoSuchElementException):
                 logger.warning("Protocol search UI not found, reading page directly")
@@ -501,7 +560,7 @@ class ZeusMonitor:
                 )
                 texts = [el.text.strip() for el in status_elements if el.text.strip()]
                 combined_text = " ".join(texts)
-                status.status_text = combined_text[:500]  # Truncate for storage
+                status.status_text = combined_text[:500]
             except Exception:
                 status.status_text = "Unable to extract status text"
 
@@ -545,7 +604,6 @@ class ZeusMonitor:
         alerts_count = 0
         errors = 0
 
-        # Log the run
         run_cursor = self.db.execute(
             "INSERT INTO monitor_runs (started_at) VALUES (?)",
             (cycle_start,)
@@ -563,10 +621,8 @@ class ZeusMonitor:
             logger.info("Checking protocol: %s", protocol_num)
             status = self.check_protocol(protocol_num)
 
-            # Save the check
             self._save_check(status)
 
-            # Generate alerts if needed
             if status.changed:
                 msg = f"Protocol {protocol_num} status CHANGED"
                 if status.deflection_type:
@@ -589,7 +645,6 @@ class ZeusMonitor:
 
             results.append(asdict(status))
 
-        # Update run record
         self.db.execute(
             """UPDATE monitor_runs SET
             completed_at = ?, protocols_checked = ?,
@@ -622,17 +677,13 @@ class ZeusMonitor:
         logger.info("Headless mode: %s", config.HEADLESS)
         logger.info("="*60)
 
-        # Initialize database
         self.db = init_database(config.DB_PATH)
 
-        # Create directories
         config.SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
         config.LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Create browser
         self.driver = self._create_driver()
 
-        # Login
         retry_count = 0
         while retry_count < config.MAX_RETRIES and self.running:
             if self._login_taxisnet():
@@ -651,13 +702,11 @@ class ZeusMonitor:
             self.shutdown()
             return
 
-        # Send startup notification
         send_alerts(
             f"Zeus Monitor ONLINE -- tracking {len(config.TRACKED_PROTOCOLS)} protocols",
             "INFO",
         )
 
-        # Main monitoring loop
         cycle_count = 0
         while self.running:
             try:
@@ -671,7 +720,6 @@ class ZeusMonitor:
                         cycle_count, result["alerts"]
                     )
 
-                # Wait for next cycle
                 logger.info(
                     "Next check in %d seconds (%s)",
                     config.CHECK_INTERVAL,
@@ -679,7 +727,6 @@ class ZeusMonitor:
                      ).strftime("%H:%M:%S UTC")
                 )
 
-                # Interruptible sleep
                 for _ in range(config.CHECK_INTERVAL):
                     if not self.running:
                         break
@@ -729,22 +776,18 @@ def print_status(db_path: Path) -> None:
 
     conn = sqlite3.connect(str(db_path))
 
-    # Run stats
     runs = conn.execute(
         "SELECT COUNT(*), MAX(completed_at) FROM monitor_runs WHERE status='completed'"
     ).fetchone()
 
-    # Protocol check stats
     checks = conn.execute(
         "SELECT COUNT(*), COUNT(DISTINCT protocol_number) FROM protocol_checks"
     ).fetchone()
 
-    # Alert stats
     alerts = conn.execute(
         "SELECT COUNT(*), SUM(CASE WHEN severity='CRITICAL' THEN 1 ELSE 0 END) FROM alerts"
     ).fetchone()
 
-    # Changes detected
     changes = conn.execute(
         "SELECT COUNT(*) FROM protocol_checks WHERE changed = 1"
     ).fetchone()
@@ -762,7 +805,6 @@ def print_status(db_path: Path) -> None:
     print(f"  Status changes:     {changes[0]}")
     print(f"{'='*60}")
 
-    # Recent alerts
     recent = conn.execute(
         "SELECT protocol_number, severity, message, created_at "
         "FROM alerts ORDER BY created_at DESC LIMIT 10"
@@ -819,7 +861,6 @@ def main():
         print(f"{'='*50}")
         return
 
-    # Validate credentials
     if not config.MYAADE_USERNAME or not config.MYAADE_PASSWORD:
         logger.error("MYAADE_USERNAME and MYAADE_PASSWORD must be set")
         logger.error("Copy .env.example to .env and fill in credentials")
@@ -828,7 +869,6 @@ def main():
     monitor = ZeusMonitor()
 
     if args.once:
-        # Single cycle mode
         monitor.db = init_database(args.db)
         monitor.driver = monitor._create_driver()
         if monitor._login_taxisnet():
@@ -836,7 +876,6 @@ def main():
             print(json.dumps(result, indent=2, default=str))
         monitor.shutdown()
     else:
-        # Continuous monitoring
         monitor.start()
 
 

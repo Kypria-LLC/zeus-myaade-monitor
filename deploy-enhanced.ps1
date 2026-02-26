@@ -25,7 +25,7 @@
 # Author: Kostas Kyprianos / Kypria Technologies
 # Enhanced: AI-Powered Deployment System
 # Case: EPPO PP.00179/2026/EN | FBI IC3 | IRS CI Art. 26
-# Version: 2.0.1
+# Version: 2.0.2
 # Date: February 25, 2026
 #
 # =============================================================================
@@ -58,7 +58,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 # =============================================================================
 
 $script:DeploymentConfig = @{
-    Version = "2.0.1"
+    Version = "2.0.2"
     Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Environment = $Environment
     RepoName = "zeus-myaade-monitor"
@@ -72,13 +72,16 @@ $script:DeploymentConfig = @{
     HealthCheckDelay = 10
 }
 
+# Metrics: use $null for durations so .TotalSeconds is only called on
+# actual TimeSpan objects.  Numeric fallback ("N/A") is used in the
+# summary when a step was skipped (e.g. DryRun mode).
 $script:Metrics = @{
     StartTime = Get-Date
-    PrereqCheckDuration = 0
-    CloneDuration = 0
-    BuildDuration = 0
-    DeploymentDuration = 0
-    TotalDuration = 0
+    PrereqCheckDuration = $null
+    CloneDuration = $null
+    BuildDuration = $null
+    DeploymentDuration = $null
+    TotalDuration = $null
 }
 
 # =============================================================================
@@ -131,6 +134,13 @@ function Write-Header {
     Write-Host "`n$line" -ForegroundColor Magenta
     Write-Host ">>> $Message" -ForegroundColor Magenta
     Write-Host "$line`n" -ForegroundColor Magenta
+}
+
+# Helper: safely format a duration metric as seconds or "N/A"
+function Format-MetricSeconds {
+    param($Duration)
+    if ($null -eq $Duration) { return "N/A (skipped)" }
+    return "$([math]::Round($Duration.TotalSeconds, 2))s"
 }
 
 # =============================================================================
@@ -252,11 +262,11 @@ function Backup-CurrentDeployment {
             Write-Success "Configuration backup created"
         }
         
-        # Cleanup old backups
-        $backups = Get-ChildItem $script:DeploymentConfig.BackupDir | Sort-Object LastWriteTime -Descending
+        # Cleanup old backups -- wrap in @() so .Count works even with 0 or 1 items (PS 5.1)
+        $backups = @(Get-ChildItem $script:DeploymentConfig.BackupDir -ErrorAction SilentlyContinue)
         if ($backups.Count -gt $script:DeploymentConfig.MaxBackups) {
             Write-Info "Cleaning up old backups (keeping last $($script:DeploymentConfig.MaxBackups))..."
-            $backups | Select-Object -Skip $script:DeploymentConfig.MaxBackups | Remove-Item -Recurse -Force
+            $backups | Sort-Object LastWriteTime -Descending | Select-Object -Skip $script:DeploymentConfig.MaxBackups | Remove-Item -Recurse -Force
             Write-Success "Old backups cleaned"
         }
         
@@ -624,11 +634,11 @@ function Show-DeploymentSummary {
     Write-Metric "Deployment Metrics:"
     Write-Host "  Environment:       $($script:DeploymentConfig.Environment)" -ForegroundColor Cyan
     Write-Host "  Timestamp:         $($script:DeploymentConfig.Timestamp)" -ForegroundColor Cyan
-    Write-Host "  Prerequisites:     $($script:Metrics.PrereqCheckDuration.TotalSeconds)s" -ForegroundColor Cyan
-    Write-Host "  Repository Sync:   $($script:Metrics.CloneDuration.TotalSeconds)s" -ForegroundColor Cyan
-    Write-Host "  Docker Build:      $($script:Metrics.BuildDuration.TotalSeconds)s" -ForegroundColor Cyan
-    Write-Host "  Service Deploy:    $($script:Metrics.DeploymentDuration.TotalSeconds)s" -ForegroundColor Cyan
-    Write-Host "  Total Duration:    $($script:Metrics.TotalDuration.TotalSeconds)s" -ForegroundColor Cyan
+    Write-Host "  Prerequisites:     $(Format-MetricSeconds $script:Metrics.PrereqCheckDuration)" -ForegroundColor Cyan
+    Write-Host "  Repository Sync:   $(Format-MetricSeconds $script:Metrics.CloneDuration)" -ForegroundColor Cyan
+    Write-Host "  Docker Build:      $(Format-MetricSeconds $script:Metrics.BuildDuration)" -ForegroundColor Cyan
+    Write-Host "  Service Deploy:    $(Format-MetricSeconds $script:Metrics.DeploymentDuration)" -ForegroundColor Cyan
+    Write-Host "  Total Duration:    $(Format-MetricSeconds $script:Metrics.TotalDuration)" -ForegroundColor Cyan
     
     Write-Host ""
     Write-Info "Useful Commands:"
