@@ -270,6 +270,43 @@ def capture_screenshot(driver, protocol_num: str, screenshot_dir: Path) -> tuple
         logger.error("Screenshot failed for %s: %s", protocol_num, e)
         return None, None
 
+def capture_html_error(driver, error_type: str, screenshot_dir: Path) -> str:
+    """Capture the full HTML of an error page for diagnosis."""
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filename = f"error_{error_type}_{ts}.html"
+    filepath = screenshot_dir / filename
+    try:
+        page_source = driver.page_source
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Error Capture: {error_type}</title>
+    <meta charset="utf-8">
+    <meta name="captured_at" content="{datetime.now(timezone.utc).isoformat()}">
+    <meta name="current_url" content="{driver.current_url}">
+    <meta name="page_title" content="{driver.title}">
+</head>
+<body>
+    <h1>Error Capture Report</h1>
+    <ul>
+        <li><strong>Error Type:</strong> {error_type}</li>
+        <li><strong>URL:</strong> {driver.current_url}</li>
+        <li><strong>Page Title:</strong> {driver.title}</li>
+        <li><strong>Captured:</strong> {datetime.now(timezone.utc).isoformat()}</li>
+    </ul>
+    <hr>
+    <h2>Page Source:</h2>
+    <pre>{page_source}</pre>
+</body>
+</html>""")
+        logger.info("Error HTML saved: %s", filename)
+        return str(filepath)
+    except Exception as e:
+        logger.error("Failed to capture error HTML: %s", e)
+        return ""
+
 # ---------------------------------------------------------------------------
 # Deflection Analysis Engine
 # ---------------------------------------------------------------------------
@@ -438,7 +475,7 @@ class ZeusMonitor:
             )
             username_field.clear()
             username_field.send_keys(config.MYAADE_USERNAME)
-            logger.info("Username entered")
+            logger.info("Username entered: %s", config.MYAADE_USERNAME[:3] + "***")
 
             # Fill password
             password_field = wait.until(
@@ -446,35 +483,74 @@ class ZeusMonitor:
             )
             password_field.clear()
             password_field.send_keys(config.MYAADE_PASSWORD)
-            logger.info("Password entered")
+            logger.info("Password entered (length: %d)", len(config.MYAADE_PASSWORD))
 
             # Find and click submit button (multi-selector fallback)
             submit_btn = self._find_login_button(wait)
+            logger.info("Clicking login button...")
             submit_btn.click()
-            logger.info("Login form submitted, waiting for redirect...")
+            logger.info("Login form submitted, waiting for redirect (up to 45 seconds)...")
 
-            # Wait for redirect to MyAADE / TaxisNet dashboard
-            wait.until(
-                lambda d: any(kw in d.current_url for kw in [
-                    "taxisnet", "myaade", "aade.gr", "applications.htm",
-                ])
-            )
-            logger.info("TaxisNet login successful (URL: %s)", self.driver.current_url)
-            return True
+            # EXTENDED TIMEOUT: GSIS can be slow. Wait up to 45 seconds for redirect.
+            # Success = any URL that contains taxisnet, myaade, aade.gr, or applications.htm
+            # Failure = stays at auth_cred_submit (which means backend rejected credentials)
+            try:
+                wait.until(
+                    lambda d: any(kw in d.current_url for kw in [
+                        "taxisnet", "myaade", "aade.gr", "applications.htm",
+                    ]),
+                    timeout=45
+                )
+                logger.info("TaxisNet login successful (URL: %s)", self.driver.current_url)
+                return True
+            except TimeoutException:
+                # Still stuck at auth_cred_submit -- backend rejected the credentials
+                current_url = self.driver.current_url
+                page_title = self.driver.title
+                page_text = self.driver.find_element(By.TAG_NAME, "body").text[:500]
+                
+                logger.error("Login timed out after 45 seconds (still at auth_cred_submit)")
+                logger.error("Current URL: %s", current_url)
+                logger.error("Page title: %s", page_title)
+                logger.error("Page text (first 500 chars): %s", page_text)
+                
+                # Detect specific error patterns
+                html = self.driver.page_source.lower()
+                if "locked" in html or "\u03ba\u03bb\u03b5\u03b9\u03c3\u03c4" in page_title.lower():
+                    logger.error("[DIAGNOSIS] Account appears LOCKED")
+                elif "invalid" in html or "\u03ac\u03ba\u03c5\u03c1" in page_title.lower():
+                    logger.error("[DIAGNOSIS] Invalid credentials detected")
+                elif "expired" in html or "\u03bb\u03ae\u03c8\u03b7" in page_text.lower():
+                    logger.error("[DIAGNOSIS] Password may be EXPIRED")
+                else:
+                    logger.error("[DIAGNOSIS] Unknown error at GSIS backend")
+                
+                # Save the error HTML for manual review
+                error_file = capture_html_error(self.driver, "login_timeout", config.SCREENSHOT_DIR)
+                logger.error("Full error HTML saved: %s", error_file)
+                
+                # Take screenshot as well
+                capture_screenshot(self.driver, "login_timeout", config.SCREENSHOT_DIR)
+                
+                return False
 
         except TimeoutException:
-            logger.error("Login timed out -- check credentials or portal availability")
+            logger.error("Login form not found (page load timeout)")
             logger.error("Current URL: %s", self.driver.current_url)
             logger.error("Page title: %s", self.driver.title)
-            capture_screenshot(self.driver, "login_timeout", config.SCREENSHOT_DIR)
+            capture_screenshot(self.driver, "login_form_missing", config.SCREENSHOT_DIR)
+            capture_html_error(self.driver, "login_form_timeout", config.SCREENSHOT_DIR)
             return False
         except NoSuchElementException as e:
             logger.error("Login element not found: %s", e)
             capture_screenshot(self.driver, "login_element_missing", config.SCREENSHOT_DIR)
+            capture_html_error(self.driver, "login_element_missing", config.SCREENSHOT_DIR)
             return False
         except Exception as e:
             logger.error("Login failed: %s", e)
+            logger.error(traceback.format_exc())
             capture_screenshot(self.driver, "login_failure", config.SCREENSHOT_DIR)
+            capture_html_error(self.driver, "login_exception", config.SCREENSHOT_DIR)
             return False
 
     def _get_previous_status(self, protocol_num: str) -> Optional[str]:
@@ -695,8 +771,16 @@ class ZeusMonitor:
 
         if retry_count >= config.MAX_RETRIES:
             logger.error("Login failed after %d attempts. Exiting.", config.MAX_RETRIES)
+            logger.error("")
+            logger.error("TROUBLESHOOTING:")
+            logger.error("1. Check your MYAADE_USERNAME and MYAADE_PASSWORD in .env")
+            logger.error("2. Verify password is not expired (reset on GSIS portal if needed)")
+            logger.error("3. Check if account is locked (too many failed attempts)")
+            logger.error("4. Review error HTML files in %s", config.SCREENSHOT_DIR)
+            logger.error("")
             send_alerts(
-                f"Zeus Monitor FAILED to login after {config.MAX_RETRIES} attempts",
+                f"Zeus Monitor FAILED to login after {config.MAX_RETRIES} attempts. "
+                f"Check credentials and account status.",
                 "CRITICAL",
             )
             self.shutdown()
