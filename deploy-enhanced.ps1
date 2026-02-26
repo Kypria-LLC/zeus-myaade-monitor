@@ -25,7 +25,7 @@
 # Author: Kostas Kyprianos / Kypria Technologies
 # Enhanced: AI-Powered Deployment System
 # Case: EPPO PP.00179/2026/EN | FBI IC3 | IRS CI Art. 26
-# Version: 2.0.3 (FIXED: Health check path bug)
+# Version: 2.0.4 (FIXED: Join-Path formatting in summary)
 # Date: February 25, 2026
 #
 # =============================================================================
@@ -58,7 +58,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 # =============================================================================
 
 $script:DeploymentConfig = @{
-    Version = "2.0.3"
+    Version = "2.0.4"
     Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Environment = $Environment
     RepoName = "zeus-myaade-monitor"
@@ -631,7 +631,7 @@ function Update-NotionDeploymentStatus {
 }
 
 # =============================================================================
-# DEPLOYMENT SUMMARY & REPORTING
+# DEPLOYMENT SUMMARY & REPORTING (FIXED v2.0.4)
 # =============================================================================
 
 function Show-DeploymentSummary {
@@ -661,10 +661,16 @@ function Show-DeploymentSummary {
     
     Write-Host ""
     Write-Info "File Locations:"
-    Write-Host "  Screenshots:  $(Join-Path (Get-Location) $script:DeploymentConfig.ScreenshotDir)" -ForegroundColor Yellow
-    Write-Host "  Database:     $(Join-Path (Get-Location) $script:DeploymentConfig.DataDir 'myaade_monitor.db')" -ForegroundColor Yellow
-    Write-Host "  Logs:         $(Join-Path (Get-Location) $script:DeploymentConfig.LogDir)" -ForegroundColor Yellow
-    Write-Host "  Backups:      $(Join-Path (Get-Location) $script:DeploymentConfig.BackupDir)" -ForegroundColor Yellow
+    $screenshotsPath = Join-Path (Get-Location) $script:DeploymentConfig.ScreenshotDir
+    $dataPath = Join-Path (Get-Location) $script:DeploymentConfig.DataDir
+    $databasePath = Join-Path $dataPath "myaade_monitor.db"
+    $logsPath = Join-Path (Get-Location) $script:DeploymentConfig.LogDir
+    $backupsPath = Join-Path (Get-Location) $script:DeploymentConfig.BackupDir
+    
+    Write-Host "  Screenshots:  $screenshotsPath" -ForegroundColor Yellow
+    Write-Host "  Database:     $databasePath" -ForegroundColor Yellow
+    Write-Host "  Logs:         $logsPath" -ForegroundColor Yellow
+    Write-Host "  Backups:      $backupsPath" -ForegroundColor Yellow
     
     Write-Host ""
     Write-Success "[OK] Automated monitoring active - checking MyAADE every 5 minutes"
