@@ -486,7 +486,7 @@ class ZeusMonitor:
         cursor = self.db.execute(
             "SELECT page_source_hash FROM protocol_checks "
             "WHERE protocol_number = ? ORDER BY checked_at DESC LIMIT 1",
-            (protocol_num,),
+            (protocol_num,)
         )
         row = cursor.fetchone()
         return row[0] if row else None
