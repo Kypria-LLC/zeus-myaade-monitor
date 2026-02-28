@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
+# CI gate job added to satisfy branch protection required status check
 myaade_monitor_zeus.py -- Zeus MyAADE Protocol Monitor
 
 Selenium-based 24/7 monitoring system for the MyAADE (AADE TaxisNet) portal.
