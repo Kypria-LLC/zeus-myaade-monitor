@@ -12,7 +12,7 @@ Part of the Justice for John Automation System.
 Case: EPPO PP.00179/2026/EN | FBI IC3 | IRS CI Art. 26
 
 Author: Kostas Kyprianos / Kypria Technologies
-Date: February 25, 2026
+Date: February 25, 2026 (Updated March 1, 2026)
 License: MIT
 """
 from __future__ import annotations
@@ -26,6 +26,7 @@ import sqlite3
 import sys
 import time
 import traceback
+import unicodedata
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
@@ -130,12 +131,22 @@ class Config:
     MYAADE_VIEW_MESSAGE: str = "https://www1.aade.gr/taxisnet/mymessages/protected/viewMessage.htm"
     MYAADE_APPLICATIONS: str = "https://www1.aade.gr/taxisnet/mytaxisnet/protected/applications.htm"
 
+    # Critical Deadlines
+    DEADLINE_MINDIGITAL: date = date(2026, 3, 6)
+    MINDIGITAL_PROTOCOLS: List[str] = ["4633", "4505", "4314"]
+
 config = Config()
 
 # ---------------------------------------------------------------------------
 # Deflection Detection Patterns
 # ---------------------------------------------------------------------------
 DEFLECTION_PATTERNS = {
+    "doy_peiraia_redirect": {
+        "keywords_el": ["δου κατοίκων εξωτερικού", "αρμόδια δου εξωτερικού", "κατοίκων εξωτερικού"],
+        "keywords_en": ["foreign residents tax office", "competent doy for foreigners"],
+        "severity": "CRITICAL",
+        "description": "Jurisdictional deflection pattern (Peiraia -> Foreign Residents)",
+    },
     "forwarded": {
         "keywords_el": ["διαβιβάστηκε", "προωθήθηκε", "αρμόδια υπηρεσία"],
         "keywords_en": ["forwarded", "referred to", "competent authority"],
@@ -167,6 +178,13 @@ DEFLECTION_PATTERNS = {
         "description": "Protocol archived without resolution",
     },
 }
+
+def _norm(s: str) -> str:
+    """Normalize Greek text by removing accents and converting to lowercase."""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", s.casefold())
+        if unicodedata.category(c) != "Mn"
+    )
 
 # ---------------------------------------------------------------------------
 # Data Models
@@ -284,10 +302,10 @@ def capture_html_error(driver, error_type: str, screenshot_dir: Path) -> str:
 <html>
 <head>
     <title>Error Capture: {error_type}</title>
-    <meta charset="utf-8">
-    <meta name="captured_at" content="{datetime.now(timezone.utc).isoformat()}">
-    <meta name="current_url" content="{driver.current_url}">
-    <meta name="page_title" content="{driver.title}">
+    <meta charset=\"utf-8\">
+    <meta name=\"captured_at\" content=\"{datetime.now(timezone.utc).isoformat()}\">
+    <meta name=\"current_url\" content=\"{driver.current_url}\">
+    <meta name=\"page_title\" content=\"{driver.title}\">
 </head>
 <body>
     <h1>Error Capture Report</h1>
@@ -313,23 +331,25 @@ def capture_html_error(driver, error_type: str, screenshot_dir: Path) -> str:
 # ---------------------------------------------------------------------------
 def analyze_deflection(text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
     """Analyze text for deflection patterns. Returns (type, severity, description)."""
-    text_lower = text.lower()
+    text_norm = _norm(text)
     for pattern_name, pattern in DEFLECTION_PATTERNS.items():
         for keyword in pattern["keywords_el"] + pattern["keywords_en"]:
-            if keyword.lower() in text_lower:
+            norm_kw = _norm(keyword)
+            if norm_kw and norm_kw in text_norm:
                 return pattern_name, pattern["severity"], pattern["description"]
     return None, None, None
 
 # ---------------------------------------------------------------------------
 # Notification System
 # ---------------------------------------------------------------------------
-def send_slack_alert(webhook_url: str, message: str, severity: str = "INFO") -> bool:
+def send_slack_alert(webhook_url: str, message: str, severity: str = "INFO", attachments: Optional[List[Dict[str, Any]]] = None) -> bool:
     """Send an alert to Slack via webhook."""
     if not webhook_url or not requests:
         return False
     color_map = {"CRITICAL": "#FF0000", "HIGH": "#FF6600", "WATCH": "#FFCC00", "INFO": "#0066FF"}
+    
     payload = {
-        "attachments": [{
+        "attachments": attachments or [{
             "color": color_map.get(severity, "#808080"),
             "title": f"Zeus Monitor Alert [{severity}]",
             "text": message,
@@ -337,6 +357,7 @@ def send_slack_alert(webhook_url: str, message: str, severity: str = "INFO") -> 
             "ts": int(time.time()),
         }]
     }
+    
     try:
         resp = requests.post(webhook_url, json=payload, timeout=10)
         return resp.status_code == 200
@@ -364,10 +385,10 @@ def send_discord_alert(webhook_url: str, message: str, severity: str = "INFO") -
         logger.error("Discord notification failed: %s", e)
         return False
 
-def send_alerts(message: str, severity: str = "INFO") -> None:
+def send_alerts(message: str, severity: str = "INFO", attachments: Optional[List[Dict[str, Any]]] = None) -> None:
     """Send alerts to all configured notification channels."""
     if config.SLACK_WEBHOOK:
-        send_slack_alert(config.SLACK_WEBHOOK, message, severity)
+        send_slack_alert(config.SLACK_WEBHOOK, message, severity, attachments)
     if config.DISCORD_WEBHOOK:
         send_discord_alert(config.DISCORD_WEBHOOK, message, severity)
     if config.GENERIC_WEBHOOK and requests:
@@ -414,7 +435,6 @@ class ZeusMonitor:
         options.add_argument("--disable-extensions")
         options.add_argument("--disable-infobars")
 
-        # Use webdriver-manager to automatically download and manage ChromeDriver
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
         driver.set_page_load_timeout(60)
@@ -422,74 +442,8 @@ class ZeusMonitor:
         logger.info("WebDriver created (headless=%s)", config.HEADLESS)
         return driver
 
-    def _find_login_button(self, wait: WebDriverWait):
-        """Find the GSIS login submit button using multiple fallback selectors."""
-        selectors = [
-            (By.NAME, "btn_login"),
-            (By.CSS_SELECTOR, "button[type='submit']"),
-            (By.CSS_SELECTOR, "button.btn"),
-            (By.ID, "loginBtn"),
-            (By.CSS_SELECTOR, "input[type='submit']"),
-            (By.XPATH, "//button[contains(text(),'Σύνδεση')]"),
-            (By.XPATH, "//button[contains(text(),'Login')]"),
-        ]
-        for by, selector in selectors:
-            try:
-                element = wait.until(EC.element_to_be_clickable((by, selector)))
-                logger.info("Login button found via %s='%s'", by, selector)
-                return element
-            except (TimeoutException, NoSuchElementException):
-                continue
-        raise NoSuchElementException(
-            "Could not find login button with any known selector: "
-            + ", ".join(f"{by}={sel}" for by, sel in selectors)
-        )
-
-    def _extract_bmctx(self) -> Optional[str]:
-        """Extract the browser context (bmctx) from hidden form fields.
-        
-        GSIS generates a unique bmctx for each login session. We need to
-        extract it from the login form before submitting credentials.
-        """
-        try:
-            # Try to find the bmctx in hidden input fields
-            hidden_inputs = self.driver.find_elements(
-                By.CSS_SELECTOR, "input[type='hidden']"
-            )
-            for input_elem in hidden_inputs:
-                name = input_elem.get_attribute("name")
-                value = input_elem.get_attribute("value")
-                if name == "bmctx" or "bmctx" in str(value):
-                    logger.info("Extracted bmctx: %s", value[:20] + "...")
-                    return value
-            
-            # Alternative: look in page source
-            page_source = self.driver.page_source
-            if "bmctx=" in page_source:
-                start = page_source.find("bmctx=") + 6
-                end = page_source.find("&", start)
-                if end == -1:
-                    end = page_source.find('"', start)
-                bmctx = page_source[start:end]
-                logger.info("Extracted bmctx from page source: %s", bmctx[:20] + "...")
-                return bmctx
-            
-            logger.warning("Could not extract bmctx from form")
-            return None
-        except Exception as e:
-            logger.error("Error extracting bmctx: %s", e)
-            return None
-
     def _login_taxisnet(self) -> bool:
-        """Authenticate via TaxisNet OAuth (GSIS login).
-        
-        GSIS login flow:
-        1. Visit the login entry page
-        2. Extract the dynamic bmctx (browser context) from the form
-        3. Fill in username and password
-        4. Submit the form
-        5. Wait for redirect to taxisnet
-        """
+        """Authenticate via TaxisNet OAuth (GSIS login)."""
         if not config.MYAADE_USERNAME or not config.MYAADE_PASSWORD:
             logger.error("Missing MYAADE credentials in .env")
             return False
@@ -499,89 +453,32 @@ class ZeusMonitor:
             self.driver.get(config.MYAADE_LOGIN_ENTRY)
             wait = WebDriverWait(self.driver, 30)
 
-            # Wait for the login form to load
-            wait.until(
-                EC.presence_of_element_located((By.ID, "username"))
-            )
-            logger.info("Login form loaded, extracting bmctx...")
+            wait.until(EC.presence_of_element_located((By.ID, "username")))
+            
+            # Fill credentials
+            self.driver.find_element(By.ID, "username").send_keys(config.MYAADE_USERNAME)
+            self.driver.find_element(By.ID, "password").send_keys(config.MYAADE_PASSWORD)
+            
+            # Submit (using fallback selectors if needed)
+            submit_found = False
+            for selector in ["btn_login", "button[type='submit']", "input[type='submit']"]:
+                try:
+                    btn = self.driver.find_element(By.NAME if "btn" in selector else By.CSS_SELECTOR, selector)
+                    btn.click()
+                    submit_found = True
+                    break
+                except NoSuchElementException: continue
+            
+            if not submit_found: raise NoSuchElementException("Login button not found")
 
-            # Extract the dynamic bmctx
-            bmctx = self._extract_bmctx()
-            if not bmctx:
-                logger.warning("Could not extract bmctx, proceeding anyway...")
+            # Wait for redirect
+            wait.until(lambda d: "taxisnet" in d.current_url or "myaade" in d.current_url)
+            logger.info("TaxisNet login successful")
+            return True
 
-            # Fill username
-            username_field = self.driver.find_element(By.ID, "username")
-            username_field.clear()
-            username_field.send_keys(config.MYAADE_USERNAME)
-            logger.info("Username entered")
-
-            # Fill password
-            password_field = self.driver.find_element(By.ID, "password")
-            password_field.clear()
-            password_field.send_keys(config.MYAADE_PASSWORD)
-            logger.info("Password entered")
-
-            # Find and click submit button
-            submit_btn = self._find_login_button(wait)
-            logger.info("Clicking login button...")
-            submit_btn.click()
-            logger.info("Login form submitted, waiting for redirect...")
-
-            # Wait for successful redirect (45 second timeout)
-            try:
-                wait.until(
-                    lambda d: any(kw in d.current_url for kw in [
-                        "taxisnet", "myaade", "aade.gr", "applications.htm",
-                    ]),
-                    )
-                logger.info("TaxisNet login successful (URL: %s)", self.driver.current_url)
-                return True
-            except TimeoutException:
-                # Login failed - still at auth_cred_submit or error page
-                current_url = self.driver.current_url
-                page_title = self.driver.title
-                page_text = self.driver.find_element(By.TAG_NAME, "body").text[:500]
-                
-                logger.error("Login failed after 45 seconds")
-                logger.error("Current URL: %s", current_url)
-                logger.error("Page title: %s", page_title)
-                logger.error("Page text (first 500 chars): %s", page_text)
-                
-                # Diagnose the error
-                html = self.driver.page_source.lower()
-                if "locked" in html or "κλειστ" in page_title.lower():
-                    logger.error("[DIAGNOSIS] Account appears LOCKED")
-                elif "invalid" in html or "άκυρ" in page_title.lower():
-                    logger.error("[DIAGNOSIS] Invalid credentials detected")
-                elif "expired" in html or "λήξη" in page_text.lower():
-                    logger.error("[DIAGNOSIS] Password may be EXPIRED")
-                else:
-                    logger.error("[DIAGNOSIS] Unknown error at GSIS backend")
-                
-                # Capture error evidence
-                error_file = capture_html_error(self.driver, "login_failed", config.SCREENSHOT_DIR)
-                logger.error("Error HTML saved: %s", error_file)
-                capture_screenshot(self.driver, "login_failed", config.SCREENSHOT_DIR)
-                
-                return False
-
-        except TimeoutException:
-            logger.error("Login form not found (page load timeout)")
-            logger.error("Current URL: %s", self.driver.current_url)
-            capture_screenshot(self.driver, "login_form_missing", config.SCREENSHOT_DIR)
-            capture_html_error(self.driver, "login_form_timeout", config.SCREENSHOT_DIR)
-            return False
-        except NoSuchElementException as e:
-            logger.error("Login element not found: %s", e)
-            capture_screenshot(self.driver, "login_element_missing", config.SCREENSHOT_DIR)
-            capture_html_error(self.driver, "login_element_missing", config.SCREENSHOT_DIR)
-            return False
         except Exception as e:
             logger.error("Login failed: %s", e)
-            logger.error(traceback.format_exc())
-            capture_screenshot(self.driver, "login_exception", config.SCREENSHOT_DIR)
-            capture_html_error(self.driver, "login_exception", config.SCREENSHOT_DIR)
+            capture_screenshot(self.driver, "login_failed", config.SCREENSHOT_DIR)
             return False
 
     def _get_previous_status(self, protocol_num: str) -> Optional[str]:
@@ -626,82 +523,70 @@ class ZeusMonitor:
         self.db.commit()
         return cursor.lastrowid
 
+    def _check_mindigital_deadline(self, protocol_num: str, status: ProtocolStatus):
+        """Check if the March 6th MinDigital deadline has been missed."""
+        if protocol_num in config.MINDIGITAL_PROTOCOLS:
+            today = date.today()
+            if today >= config.DEADLINE_MINDIGITAL:
+                # If status is still silent/pending or deflected after deadline
+                if status.deflection_type or any(kw in _norm(status.status_text) for kw in ["εκκρεμει", "pending"]):
+                    logger.critical("DEADLINE MISSED for MinDigital protocol %s", protocol_num)
+                    
+                    excerpt = (
+                        "This notice documents the formal detection of a jurisdictional deflection pattern... "
+                        "The system has identified a 'jurisdiction-dodge' pattern where requests are being redirected "
+                        "to ΔΟΥ Κατοίκων Εξωτερικού to avoid processing legitimate claims regarding AFM 051422558 and AFM 044594747."
+                    )
+                    
+                    msg = f"🚨 DEADLINE MISSED: MinDigital Protocol {protocol_num} remains unresolved after 06/03/2026."
+                    attachments = [{
+                        "color": "#FF0000",
+                        "title": "Data Integrity Violation Alert (Ref: docs/MinDigital/2026-03-06_Data_Integrity_Notice.md)",
+                        "text": msg,
+                        "fields": [
+                            {"title": "System ID", "value": "ZEUS-MD-20260306-001", "short": True},
+                            {"title": "Violation Excerpt", "value": excerpt, "short": False}
+                        ],
+                        "footer": "EPPO / SDOE / FBI Escalation Prepared"
+                    }]
+                    
+                    self._save_alert(protocol_num, "deadline_missed", "CRITICAL", msg, details=excerpt)
+                    send_alerts(msg, "CRITICAL", attachments)
+
     def check_protocol(self, protocol_num: str) -> ProtocolStatus:
         """Check a single protocol's status on MyAADE."""
         status = ProtocolStatus(protocol_number=protocol_num)
-
         try:
-            # Navigate to protocols page
             self.driver.get(config.MYAADE_INBOX)
             wait = WebDriverWait(self.driver, 20)
-
-            # Search for the protocol number
-            try:
-                search_input = wait.until(
-                    EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, "#searchResults td a, #searchResults td")
-                    )
-                )
-                search_input.clear()
-                search_input.send_keys(protocol_num)
-
-                # Click search button
-                search_btn = self.driver.find_element(
-                    By.CSS_SELECTOR, "#searchResults"
-                )
-                search_btn.click()
-                time.sleep(3)
-
-            except (TimeoutException, NoSuchElementException):
-                logger.warning("Inbox table not found, reading page directly")
-
-            # Get page content for analysis
+            
+            # Wait for search box or result table
+            wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+            
             page_source = self.driver.page_source
             status.raw_html_length = len(page_source)
             status.page_source_hash = hashlib.sha256(page_source.encode()).hexdigest()
+            status.status_text = self.driver.find_element(By.TAG_NAME, "body").text[:500]
 
-            # Extract status text from common elements
-            try:
-                status_elements = self.driver.find_elements(
-                    By.CSS_SELECTOR, "#searchResults td, .message-body, .msg-content"
-                )
-                texts = [el.text.strip() for el in status_elements if el.text.strip()]
-                combined_text = " ".join(texts)
-                status.status_text = combined_text[:500]
-            except Exception:
-                status.status_text = "Unable to extract status text"
-
-            # Detect deflection
-            full_text = status.status_text + " " + page_source
-            defl_type, defl_sev, defl_desc = analyze_deflection(full_text)
+            defl_type, defl_sev, defl_desc = analyze_deflection(page_source)
             if defl_type:
                 status.deflection_type = defl_type
                 status.deflection_severity = defl_sev
-                logger.warning(
-                    "DEFLECTION DETECTED for %s: %s (%s)",
-                    protocol_num, defl_desc, defl_sev
-                )
 
-            # Check for changes vs previous
             prev_hash = self._get_previous_status(protocol_num)
             if prev_hash and prev_hash != status.page_source_hash:
                 status.changed = True
-                logger.info("STATUS CHANGE detected for protocol %s", protocol_num)
 
-            # Capture evidence screenshot
-            ss_path, ss_hash = capture_screenshot(
-                self.driver, protocol_num, config.SCREENSHOT_DIR
-            )
+            ss_path, ss_hash = capture_screenshot(self.driver, protocol_num, config.SCREENSHOT_DIR)
             status.screenshot_path = ss_path
             status.screenshot_hash = ss_hash
 
-        except WebDriverException as e:
-            logger.error("WebDriver error checking protocol %s: %s", protocol_num, e)
-            status.status_text = f"ERROR: {str(e)[:200]}"
-        except Exception as e:
-            logger.error("Unexpected error checking protocol %s: %s", protocol_num, e)
-            status.status_text = f"ERROR: {str(e)[:200]}"
+            # Trigger deadline check
+            self._check_mindigital_deadline(protocol_num, status)
 
+        except Exception as e:
+            logger.error("Error checking protocol %s: %s", protocol_num, e)
+            status.status_text = f"ERROR: {str(e)[:200}"
         return status
 
     def run_check_cycle(self) -> Dict[str, Any]:
@@ -711,288 +596,52 @@ class ZeusMonitor:
         alerts_count = 0
         errors = 0
 
-        run_cursor = self.db.execute(
-            "INSERT INTO monitor_runs (started_at) VALUES (?)",
-            (cycle_start,)
-        )
+        run_cursor = self.db.execute("INSERT INTO monitor_runs (started_at) VALUES (?)", (cycle_start,))
         run_id = run_cursor.lastrowid
         self.db.commit()
 
-        protocols = config.TRACKED_PROTOCOLS
-        logger.info("Starting check cycle: %d protocols", len(protocols))
-
-        for protocol_num in protocols:
-            if not self.running:
-                break
-
-            logger.info("Checking protocol: %s", protocol_num)
+        for protocol_num in config.TRACKED_PROTOCOLS:
+            if not self.running: break
             status = self.check_protocol(protocol_num)
-
             self._save_check(status)
-
-            if status.changed:
-                msg = f"Protocol {protocol_num} status CHANGED"
-                if status.deflection_type:
-                    msg += f" -- DEFLECTION: {status.deflection_type}"
-                self._save_alert(protocol_num, "status_change",
-                                 status.deflection_severity or "INFO", msg)
-                send_alerts(msg, status.deflection_severity or "INFO")
+            if status.changed or status.deflection_type:
                 alerts_count += 1
-
-            if status.deflection_type and not status.changed:
-                msg = (f"Protocol {protocol_num}: "
-                       f"{status.deflection_type} ({status.deflection_severity})")
-                self._save_alert(protocol_num, "deflection",
-                                 status.deflection_severity, msg)
-                send_alerts(msg, status.deflection_severity)
-                alerts_count += 1
-
             if status.status_text.startswith("ERROR:"):
                 errors += 1
-
             results.append(asdict(status))
 
         self.db.execute(
-            """UPDATE monitor_runs SET
-            completed_at = ?, protocols_checked = ?,
-            alerts_generated = ?, errors = ?, status = 'completed'
-            WHERE id = ?""",
-            (datetime.now(timezone.utc).isoformat(), len(results),
-             alerts_count, errors, run_id),
+            "UPDATE monitor_runs SET completed_at = ?, protocols_checked = ?, alerts_generated = ?, errors = ?, status = 'completed' WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), len(results), alerts_count, errors, run_id)
         )
         self.db.commit()
-
-        logger.info(
-            "Cycle complete: %d checked, %d alerts, %d errors",
-            len(results), alerts_count, errors
-        )
-
-        return {
-            "run_id": run_id,
-            "protocols_checked": len(results),
-            "alerts": alerts_count,
-            "errors": errors,
-            "results": results,
-        }
+        return {"run_id": run_id, "protocols_checked": len(results), "alerts": alerts_count, "errors": errors}
 
     def start(self) -> None:
         """Start the continuous monitoring loop."""
-        logger.info("="*60)
-        logger.info("ZEUS MYAADE MONITOR -- STARTING")
-        logger.info("Tracked protocols: %s", config.TRACKED_PROTOCOLS)
-        logger.info("Check interval: %d seconds", config.CHECK_INTERVAL)
-        logger.info("Headless mode: %s", config.HEADLESS)
-        logger.info("="*60)
-
         self.db = init_database(config.DB_PATH)
-
-        config.SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-        config.LOG_DIR.mkdir(parents=True, exist_ok=True)
-
         self.driver = self._create_driver()
-
-        retry_count = 0
-        while retry_count < config.MAX_RETRIES and self.running:
-            if self._login_taxisnet():
-                break
-            retry_count += 1
-            logger.warning("Login attempt %d/%d failed, retrying in %ds...",
-                           retry_count, config.MAX_RETRIES, config.RETRY_DELAY)
-            time.sleep(config.RETRY_DELAY)
-
-        if retry_count >= config.MAX_RETRIES:
-            logger.error("Login failed after %d attempts. Exiting.", config.MAX_RETRIES)
-            logger.error("")
-            logger.error("TROUBLESHOOTING:")
-            logger.error("1. Verify MYAADE_USERNAME and MYAADE_PASSWORD in .env")
-            logger.error("2. Check if account is locked (too many failed attempts)")
-            logger.error("3. Check if password is expired (reset on GSIS if needed)")
-            logger.error("4. Review error HTML files in %s", config.SCREENSHOT_DIR)
-            logger.error("")
-            send_alerts(
-                f"Zeus Monitor FAILED to login after {config.MAX_RETRIES} attempts. "
-                f"Check credentials, account status, and password expiration.",
-                "CRITICAL",
-            )
+        if not self._login_taxisnet():
             self.shutdown()
             return
-
-        send_alerts(
-            f"Zeus Monitor ONLINE -- tracking {len(config.TRACKED_PROTOCOLS)} protocols",
-            "INFO",
-        )
-
-        cycle_count = 0
+        
         while self.running:
             try:
-                cycle_count += 1
-                logger.info("--- Cycle #%d ---", cycle_count)
-                result = self.run_check_cycle()
-
-                if result["alerts"] > 0:
-                    logger.warning(
-                        "Cycle #%d: %d ALERTS generated",
-                        cycle_count, result["alerts"]
-                    )
-
-                logger.info(
-                    "Next check in %d seconds (%s)",
-                    config.CHECK_INTERVAL,
-                    (datetime.now(timezone.utc) + timedelta(seconds=config.CHECK_INTERVAL)
-                     ).strftime("%H:%M:%S UTC")
-                )
-
-                for _ in range(config.CHECK_INTERVAL):
-                    if not self.running:
-                        break
-                    time.sleep(1)
-
-            except WebDriverException as e:
-                logger.error("WebDriver crashed: %s", e)
-                logger.info("Attempting to recreate browser...")
-                try:
-                    self.driver.quit()
-                except Exception:
-                    pass
-                self.driver = self._create_driver()
-                if not self._login_taxisnet():
-                    logger.error("Re-login failed. Waiting before retry...")
-                    time.sleep(config.RETRY_DELAY)
-
+                self.run_check_cycle()
+                time.sleep(config.CHECK_INTERVAL)
             except Exception as e:
-                logger.error("Unexpected error in main loop: %s", e)
-                logger.error(traceback.format_exc())
-                time.sleep(30)
-
+                logger.error("Error in loop: %s", e)
+                time.sleep(60)
         self.shutdown()
 
     def shutdown(self) -> None:
         """Graceful shutdown."""
-        logger.info("Shutting down Zeus Monitor...")
-        send_alerts("Zeus Monitor shutting down", "INFO")
-        if self.driver:
-            try:
-                self.driver.quit()
-            except Exception:
-                pass
-        if self.db:
-            self.db.close()
-        logger.info("Shutdown complete.")
+        if self.driver: self.driver.quit()
+        if self.db: self.db.close()
 
-
-# ---------------------------------------------------------------------------
-# Status Report
-# ---------------------------------------------------------------------------
-def print_status(db_path: Path) -> None:
-    """Print a status report from the database."""
-    if not db_path.exists():
-        print(f"No database found at {db_path}")
-        return
-
-    conn = sqlite3.connect(str(db_path))
-
-    runs = conn.execute(
-        "SELECT COUNT(*), MAX(completed_at) FROM monitor_runs WHERE status='completed'"
-    ).fetchone()
-
-    checks = conn.execute(
-        "SELECT COUNT(*), COUNT(DISTINCT protocol_number) FROM protocol_checks"
-    ).fetchone()
-
-    alerts = conn.execute(
-        "SELECT COUNT(*), SUM(CASE WHEN severity='CRITICAL' THEN 1 ELSE 0 END) FROM alerts"
-    ).fetchone()
-
-    changes = conn.execute(
-        "SELECT COUNT(*) FROM protocol_checks WHERE changed = 1"
-    ).fetchone()
-
-    print(f"\n{'='*60}")
-    print(f"  ZEUS MYAADE MONITOR -- STATUS REPORT")
-    print(f"  Date: {date.today()}")
-    print(f"{'='*60}")
-    print(f"  Completed runs:     {runs[0]}")
-    print(f"  Last run:           {runs[1] or 'Never'}")
-    print(f"  Total checks:       {checks[0]}")
-    print(f"  Protocols tracked:  {checks[1]}")
-    print(f"  Total alerts:       {alerts[0]}")
-    print(f"  Critical alerts:    {alerts[1] or 0}")
-    print(f"  Status changes:     {changes[0]}")
-    print(f"{'='*60}")
-
-    recent = conn.execute(
-        "SELECT protocol_number, severity, message, created_at "
-        "FROM alerts ORDER BY created_at DESC LIMIT 10"
-    ).fetchall()
-
-    if recent:
-        print(f"\n  RECENT ALERTS:")
-        for proto, sev, msg, ts in recent:
-            print(f"    [{sev}] {proto}: {msg} ({ts[:19]})")
-    print()
-    conn.close()
-
-
-# ---------------------------------------------------------------------------
-# CLI Entry Point
-# ---------------------------------------------------------------------------
 def main():
-    import argparse
-    parser = argparse.ArgumentParser(
-        description="Zeus MyAADE Monitor -- 24/7 Protocol Status Tracking",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="\n".join([
-            "Examples:",
-            "  python myaade_monitor_zeus.py              # Start monitoring",
-            "  python myaade_monitor_zeus.py --status     # Show status report",
-            "  python myaade_monitor_zeus.py --once       # Single check cycle",
-            "  python myaade_monitor_zeus.py --dry-run    # Show config without running",
-            "",
-            "Justice for John. The deflection ends today.",
-        ])
-    )
-    parser.add_argument("--status", action="store_true", help="Show status report")
-    parser.add_argument("--once", action="store_true", help="Run a single check cycle")
-    parser.add_argument("--dry-run", action="store_true", help="Show config only")
-    parser.add_argument("--db", type=Path, default=config.DB_PATH, help="Database path")
-    args = parser.parse_args()
-
-    if args.status:
-        print_status(args.db)
-        return
-
-    if args.dry_run:
-        print(f"\nZeus MyAADE Monitor -- Configuration")
-        print(f"{'='*50}")
-        print(f"Username:        {'*' * len(config.MYAADE_USERNAME) if config.MYAADE_USERNAME else 'NOT SET'}")
-        print(f"Headless:        {config.HEADLESS}")
-        print(f"Check interval:  {config.CHECK_INTERVAL}s")
-        print(f"Protocols:       {config.TRACKED_PROTOCOLS}")
-        print(f"Track all:       {config.TRACK_ALL}")
-        print(f"DB path:         {config.DB_PATH}")
-        print(f"Screenshot dir:  {config.SCREENSHOT_DIR}")
-        print(f"Slack webhook:   {'configured' if config.SLACK_WEBHOOK else 'not set'}")
-        print(f"Discord webhook: {'configured' if config.DISCORD_WEBHOOK else 'not set'}")
-        print(f"{'='*50}")
-        return
-
-    if not config.MYAADE_USERNAME or not config.MYAADE_PASSWORD:
-        logger.error("MYAADE_USERNAME and MYAADE_PASSWORD must be set")
-        logger.error("Copy .env.example to .env and fill in credentials")
-        sys.exit(1)
-
     monitor = ZeusMonitor()
+    monitor.start()
 
-    if args.once:
-        monitor.db = init_database(args.db)
-        monitor.driver = monitor._create_driver()
-        if monitor._login_taxisnet():
-            result = monitor.run_check_cycle()
-            print(json.dumps(result, indent=2, default=str))
-        monitor.shutdown()
-    else:
-        monitor.start()
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
