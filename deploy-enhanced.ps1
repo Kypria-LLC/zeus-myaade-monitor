@@ -25,7 +25,7 @@
 # Author: Kostas Kyprianos / Kypria Technologies
 # Enhanced: AI-Powered Deployment System
 # Case: EPPO PP.00179/2026/EN | FBI IC3 | IRS CI Art. 26
-# Version: 2.0.4 (FIXED: Join-Path formatting in summary)
+# Version: 2.0.7 (FIXED: Join-Path formatting in summary)
 # Date: February 25, 2026
 #
 # =============================================================================
@@ -58,7 +58,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 # =============================================================================
 
 $script:DeploymentConfig = @{
-    Version = "2.0.4"
+    Version = "2.0.7"
     Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Environment = $Environment
     RepoName = "zeus-myaade-monitor"
@@ -631,7 +631,7 @@ function Update-NotionDeploymentStatus {
 }
 
 # =============================================================================
-# DEPLOYMENT SUMMARY & REPORTING (FIXED v2.0.4)
+# DEPLOYMENT SUMMARY & REPORTING (FIXED v2.0.7)
 # =============================================================================
 
 function Show-DeploymentSummary {
