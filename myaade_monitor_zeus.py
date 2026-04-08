@@ -13,7 +13,7 @@ Part of the Justice for John Automation System.
 Case: EPPO PP.00179/2026/EN | FBI IC3 | IRS CI Art. 26
 
 Author: Kostas Kyprianos / Kypria Technologies
-Date: February 25, 2026 (Updated March 1, 2026)
+Date: February 25, 2026 (Updated April 8, 2026)
 License: MIT
 """
 from __future__ import annotations
@@ -182,6 +182,18 @@ DEFLECTION_PATTERNS = {
         "keywords_en": ["archived", "filed away"],
         "severity": "CRITICAL",
         "description": "Protocol archived without resolution",
+    },
+        "skonicaprot_cert504_trap": {
+        "keywords_el": ["βεβαίωση 504", "πρωτ. 175", "σκονικαπροτ", "ked/aade", "δεν διαπιστώνεται"],
+        "keywords_en": ["certificate 504", "protocol 175", "skonicaprot", "no legal defect", "ked/aade mismatch"],
+        "severity": "CRITICAL",
+        "description": "Certificate 504 institutional trap (Protocol #175/SKONICAPROT) -- municipality issued with known KED/AADE mismatch. Blocks D210, inheritance, and legal standing. Cite Protocol #175 in all future filings.",
+    },
+    "d210_enfia_fraud": {
+        "keywords_el": ["δ210", "δ211", "ενφια", "φανταστική επιχείρηση", "kaek 050681726008"],
+        "keywords_en": ["d210", "d211", "enfia", "phantom business", "unauthorized enfia"],
+        "severity": "CRITICAL",
+        "description": "D210/D211 submission blocked or ENFIA billed against deceased AFM 051422558 or KAEK 050681726008 (Keratsini). Cross-file: EPPO/SDOE/IRS-CI.",
     },
 }
 
@@ -659,3 +671,185 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# ---------------------------------------------------------------------------
+# PROTOCOL #175 / SKONICAPROT TRAP DETECTION (Added April 8, 2026)
+# ---------------------------------------------------------------------------
+# Certificate 504 Institutional Trap: Dimos Spetson issued Certificate 504
+# with knowledge of the KED/AADE data mismatch (documented in Protocol #175,
+# SKONICAPROT internal communication). YPES AP 14693 blessed the certificate
+# without reviewing Protocol #175. The defect blocks D210 filing, inheritance
+# access, and proof of standing before every downstream authority.
+# The trap is self-sealing: the defective document prevents the complaint
+# that would expose the defect. Cite Protocol #175 in all future filings.
+# Reference: C-14 in zeus-ai-evidence-package/irs-ci-package/tabs/tab2-contradiction-matrix.md
+# ---------------------------------------------------------------------------
+
+SKONICAPROT_TRAP_PROTOCOLS = [
+    "175",   # Protocol #175 — SKONICAPROT internal communication
+    "504",   # Certificate 504 — defective instrument issued with known mismatch
+]
+
+# Δ210 Submission Tracking (from PR #4 / Feb 26, 2026)
+D210_PROTOCOL_ID: str = os.getenv("D210_PROTOCOL_ID", "")
+D210_DB_PATH: str = os.getenv("D210_DB_PATH", "/app/data/myaade_monitor.db")
+
+# Additional DB table for Δ210 submissions and SKONICAPROT trap tracking
+CREATE_D210_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS d210_submissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    protocol_number TEXT NOT NULL,
+    submitting_doy TEXT,
+    status TEXT DEFAULT 'pending',
+    deflection_type TEXT,
+    doy_response TEXT,
+    cover_letter_excerpt TEXT,
+    slack_alerted INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS skonicaprot_trap_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    protocol_ref TEXT NOT NULL,
+    certificate_ref TEXT,
+    agency TEXT,
+    detected_at TEXT NOT NULL,
+    description TEXT,
+    severity TEXT DEFAULT 'CRITICAL',
+    linked_afm TEXT,
+    slack_alerted INTEGER DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_d210_protocol
+    ON d210_submissions(protocol_number);
+CREATE INDEX IF NOT EXISTS idx_skonicaprot_detected
+    ON skonicaprot_trap_events(detected_at);
+"""
+
+
+def init_d210_schema(conn: sqlite3.Connection) -> None:
+    """Extend the database with Δ210 and SKONICAPROT trap tables."""
+    try:
+        conn.executescript(CREATE_D210_SCHEMA_SQL)
+        conn.commit()
+        logger.info("Δ210 / SKONICAPROT schema initialized.")
+    except sqlite3.Error as e:
+        logger.error("Failed to init D210 schema: %s", e)
+
+
+def send_d210_slack_alert(
+    webhook_url: str,
+    protocol_number: str,
+    status: str,
+    doy_response: str,
+    deflection_type: str,
+    cover_letter_excerpt: str = "",
+) -> bool:
+    """Send a rich Slack alert for a Δ210 ENFIA history submission event.
+
+    Embeds the ΔΟΥ response, deflection type, and a cover letter excerpt
+    referencing EPPO/SDOE/FBI cross-filing context.
+    """
+    if not webhook_url or not requests:
+        return False
+    color = "#FF0000" if deflection_type else "#00AA00"
+    excerpt = cover_letter_excerpt or (
+        "Formal Δ210 ENFIA history request filed for AFM 051422558 (deceased, "
+        "13/06/2021). Any ENFIA billed after death to this AFM, or to KAEK "
+        "050681726008 (Keratsini), constitutes unauthorized billing. "
+        "Cross-filed: EPPO PP.00179/2026/EN | FBI IC3 | IRS-CI Art.26."
+    )
+    payload = {
+        "attachments": [{
+            "color": color,
+            "title": f"\u26a0\ufe0f Zeus Δ210 Tracker [{status.upper()}] — Protocol {protocol_number}",
+            "fields": [
+                {"title": "Protocol #", "value": protocol_number, "short": True},
+                {"title": "Status", "value": status, "short": True},
+                {"title": "Deflection", "value": deflection_type or "None detected", "short": True},
+                {"title": "ΔΟΥ Response Excerpt", "value": doy_response[:300] if doy_response else "(none)", "short": False},
+                {"title": "Cover Letter Excerpt", "value": excerpt[:400], "short": False},
+            ],
+            "footer": "Zeus MyAADE Monitor | Justice for John | EPPO/SDOE/FBI",
+            "ts": int(time.time()),
+        }]
+    }
+    try:
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        return resp.status_code == 200
+    except Exception as exc:
+        logger.error("D210 Slack alert failed: %s", exc)
+        return False
+
+
+def detect_skonicaprot_trap(text: str) -> bool:
+    """Detect references to Certificate 504 or SKONICAPROT in a response.
+
+    Protocol #175 (SKONICAPROT) proved the municipality knew the KED/AADE
+    mismatch when issuing Certificate 504. Any agency response that cites
+    Certificate 504 as valid, or claims no defect, without referencing
+    Protocol #175 is exhibiting the institutional trap pattern.
+    Returns True if trap indicators are present.
+    """
+    indicators = [
+        "504",                   # Certificate number
+        "skonicaprot",           # Internal system reference
+        "\u03c0\u03c1\u03c9\u03c4. 175",  # Greek: "πρωτ. 175" (Protocol 175)
+        "\u03b2\u03b5\u03b2\u03b1\u03af\u03c9\u03c3\u03b7",  # βεβαίωση (certificate)
+        "\u03b4\u03b5\u03bd \u03b4\u03b9\u03b1\u03c0\u03b9\u03c3\u03c4\u03ce\u03bd\u03b5\u03c4\u03b1\u03b9",  # δεν διαπιστώνεται (no defect found)
+        "no legal defect",
+        "ked/aade",
+        "d210",
+        "\u03b4210",
+    ]
+    text_norm = _norm(text)
+    return any(_norm(ind) in text_norm for ind in indicators if ind)
+
+
+def log_skonicaprot_event(
+    conn: sqlite3.Connection,
+    event_type: str,
+    protocol_ref: str,
+    certificate_ref: str = "504",
+    agency: str = "",
+    description: str = "",
+    linked_afm: str = "051422558",
+    severity: str = "CRITICAL",
+) -> int:
+    """Log a SKONICAPROT institutional trap detection event.
+
+    Protocol #175 / SKONICAPROT must be cited in all future filings.
+    Every detection event is persisted for the audit trail.
+    """
+    cursor = conn.execute(
+        """
+        INSERT INTO skonicaprot_trap_events
+            (event_type, protocol_ref, certificate_ref, agency,
+             detected_at, description, severity, linked_afm)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            event_type,
+            protocol_ref,
+            certificate_ref,
+            agency,
+            datetime.now(timezone.utc).isoformat(),
+            description or (
+                "Certificate 504 institutional trap detected. "
+                "Municipality issued Certificate 504 with knowledge of KED/AADE "
+                "mismatch (Protocol #175/SKONICAPROT). YPES AP 14693 blessed it "
+                "without reviewing Protocol #175. Trap blocks D210, inheritance, "
+                "and standing. Protocol #175 MUST be cited in all future filings."
+            ),
+            severity,
+            linked_afm,
+        ),
+    )
+    conn.commit()
+    logger.warning(
+        "SKONICAPROT TRAP EVENT logged: %s | Protocol #%s | Cert %s | AFM %s",
+        event_type, protocol_ref, certificate_ref, linked_afm,
+    )
+    return cursor.lastrowid
