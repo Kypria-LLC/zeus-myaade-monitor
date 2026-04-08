@@ -254,3 +254,95 @@ Built with frustration, determination, and the unwavering belief that:
 > **"Απαντήθηκε ≠ Solved. The deflection ends TODAY."**
 
 ⚖️ **ΦΑΥΛΟΣ ΚΥΚΛΟΣ ENDS NOW. JUSTICE IS AUTOMATED.**
+
+
+---
+
+## ⚠️ Protocol #175 / SKONICAPROT — Institutional Trap (April 8, 2026)
+
+> **Status**: ACTIVE — Monitored by Zeus. Cite in all future filings.
+
+### What is the SKONICAPROT Trap?
+
+**Protocol #175** (SKONICAPROT internal communication) is a municipal record proving that Δήμος Σπετσών possessed knowledge of the **KED/AADE data mismatch** at the time it issued **Certificate 504**.
+
+UPES AP 14693 (16/03/2026, Δραμουντανή/Κυρίμης) then certified "no legal defect" in Certificate 504 — **without ever requesting or reviewing Protocol #175**.
+
+### Why It Matters
+
+| Element | Detail |
+|---|---|
+| **Protocol #** | 175 (SKONICAPROT) |
+| **Certificate** | 504 — defective instrument |
+| **Agency** | Δήμος Σπετσών / YPES AP 14693 |
+| **Mismatch** | KED/AADE data discrepancy, known internally, never corrected |
+| **Impact** | Blocks D210 filing, inheritance claim, and proof of standing |
+| **Pattern** | Self-sealing trap: defective document prevents the complaint that would expose the defect |
+| **Binder Ref** | C-14 — `zeus-ai-evidence-package/irs-ci-package/tabs/tab2-contradiction-matrix.md` |
+| **Exhibits** | E-48 (Protocol #175/SKONICAPROT), E-12, E-13 |
+
+### Zeus Detection
+
+Zeus automatically detects Certificate 504 / Protocol #175 / SKONICAPROT references in MyAADE portal responses via:
+
+- **Deflection pattern**: `skonicaprot_cert504_trap` (CRITICAL severity)
+- **DB table**: `skonicaprot_trap_events` — every detection is logged with full audit trail
+- **Function**: `detect_skonicaprot_trap()` — matches on cert number, protocol ref, and Greek/English keywords
+- **Alert**: `log_skonicaprot_event()` — fires Slack CRITICAL alert with EPPO/SDOE/FBI cross-filing context
+
+```sql
+-- Query all SKONICAPROT trap events:
+SELECT event_type, protocol_ref, certificate_ref, agency, detected_at, severity
+FROM skonicaprot_trap_events
+ORDER BY detected_at DESC;
+```
+
+---
+
+## 📊 D210 Submission Tracking (April 8, 2026)
+
+Zeus now tracks **Δ210 ENFIA history requests** with a dedicated DB table and rich Slack alerts.
+
+### New DB Table: `d210_submissions`
+
+```sql
+SELECT protocol_number, status, deflection_type, doy_response, slack_alerted
+FROM d210_submissions
+ORDER BY updated_at DESC;
+```
+
+Key columns: `submitting_doy`, `deflection_type`, `cover_letter_excerpt`, `slack_alerted`.
+
+### D210 Deflection Pattern
+
+| Greek Status | Meaning | Zeus Action |
+|---|---|---|
+| ΔΟΥ Κατοίκων Εξωτερικού redirect | Jurisdiction dodge | 🚨 CRITICAL — `doy_peiraia_redirect` |
+| KAEK 050681726008 ENFIA | Unauthorized billing (deceased AFM) | 🚨 CRITICAL — `d210_enfia_fraud` |
+| βεβαίωση 504 / πρωτ. 175 | Certificate 504 institutional trap | 🚨 CRITICAL — `skonicaprot_cert504_trap` |
+
+### Environment Variables
+
+```env
+D210_PROTOCOL_ID=        # AADE-assigned protocol number for the Δ210 submission
+D210_DB_PATH=            # Path to shared SQLite (dual-repo: zeus-myaade-monitor ↔ justice-for-john-automation)
+```
+
+---
+
+## 📜 Case Status — April 8, 2026
+
+| Agency | Protocol # | Status | Zeus Monitoring |
+|---|---|---|---|
+| AADE / KEFOK | #380, #381 | ΕΠΕΙΓΟΝ — forced response | ✅ Active |
+| Αποκεντρωμένη | 18058, 19466 | Contradiction documented (C-3) | ✅ Active |
+| EFKA / HDIKA | #343, #384, #387 | Audit log silence — binary trap (C-7) | ✅ Active |
+| YPES | AP 14693 | Certificate 504 blessed without Protocol #175 (C-14) | ⚠️ CRITICAL |
+| Ktimatologio | ND0113/2606549 | 24+ days overdue — KAEK 050681726008 forgery | ✅ Active |
+| EPPO | PP.00179/2026/EN | Supplemental filing prepared | ✅ Active |
+| IRS-CI | Art.26 referral | Cross-border exploitation of US Navy veteran | ✅ Active |
+| FBI IC3 | eaa5459ac668431a | Filed | ✅ Active |
+
+> **Protocol #175 must be cited in all future filings as proof of institutional knowledge at the point of issuance.**
+>
+> ⚤ **ΦΑΥΛΟΣ ΚΥΚΛΟΣ ENDS NOW. JUSTICE IS AUTOMATED. JUSTICE FOR JOHN.**
