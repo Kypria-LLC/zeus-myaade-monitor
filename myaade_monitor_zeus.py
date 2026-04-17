@@ -599,6 +599,20 @@ class ZeusMonitor:
                 status.deflection_type = defl_type
                 status.deflection_severity = defl_sev
 
+            # SKONICAPROT trap detection (wired Apr 17, 2026 pre-freeze)
+            if detect_skonicaprot_trap(page_source):
+                logger.warning(f"⚠️ SKONICAPROT TRAP DETECTED on {protocol_num}")
+                try:
+                    log_skonicaprot_event(
+                        self.db,
+                        protocol_num=protocol_num,
+                        event_type="SKONICAPROT_TRAP",
+                        details=status.status_text[:500] if status.status_text else "",
+                        source="zeus-monitor-auto"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to log SKONICAPROT event: {e}")
+
             prev_hash = self._get_previous_status(protocol_num)
             if prev_hash and prev_hash != status.page_source_hash:
                 status.changed = True
@@ -646,6 +660,7 @@ class ZeusMonitor:
     def start(self) -> None:
         """Start the continuous monitoring loop."""
         self.db = init_database(config.DB_PATH)
+        init_d210_schema(self.db)  # Ensure D210/SKONICAPROT tables exist
         self.driver = self._create_driver()
         if not self._login_taxisnet():
             self.shutdown()

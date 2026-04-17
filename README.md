@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/alexandros-thomson/zeus-myaade-monitor/main/assets/zeus-myaade-crest.png" width="120" height="120" alt="Zeus MYAADE Monitor Crest" style="border-radius:50%; border:3px solid #DAA520;" />
+  <img src="https://raw.githubusercontent.com/Kypria-LLC/zeus-myaade-monitor/main/assets/zeus-myaade-crest.png" width="120" height="120" alt="Zeus MYAADE Monitor Crest" style="border-radius:50%; border:3px solid #DAA520;" />
   <br />
 </div>
 
@@ -9,7 +9,7 @@
 ![Dependencies](https://img.shields.io/badge/dependencies-0%20vulnerabilities-success)
 ![Branch Protection](https://img.shields.io/badge/branch%20protection-active-success)
 ![CodeQL](https://img.shields.io/badge/CodeQL-passing-success)
-![Tests](https://github.com/alexandros-thomson/zeus-myaade-monitor/actions/workflows/tests.yml/badge.svg)
+![Tests](https://github.com/Kypria-LLC/zeus-myaade-monitor/actions/workflows/tests.yml/badge.svg)
 ![Zeus MYAADE Monitor](https://img.shields.io/badge/Zeus_MYAADE_Monitor-v1.0-gold?style=flat-square&logo=data:image/png;base64,iVBORw0KGgo=&logoColor=gold)
 ![Case](https://img.shields.io/badge/Case-Kyprianos_v_AADE-crimson?style=flat-square)
 ![Justice](https://img.shields.io/badge/Justice_for_Ioannis-%E2%9A%96%EF%B8%8F-blue?style=flat-square)
@@ -44,7 +44,7 @@ Monitor MyAADE protocol statuses 24/7, detect bureaucratic deflection tactics, a
 
 ```bash
 # Clone repository
-git clone https://github.com/alexandros-thomson/zeus-myaade-monitor.git
+git clone https://github.com/Kypria-LLC/zeus-myaade-monitor.git
 cd zeus-myaade-monitor
 
 # Run deployment script
@@ -245,7 +245,7 @@ MIT License - Use freely, END THE ΦΑΥΛΟΣ ΚΥΚΛΟΣ everywhere.
 
 **Kostas Kyprianos** / Kypria Technologies
 - Website: [kypriatechnologies.org](https://kypriatechnologies.org)
-- GitHub: [@alexandros-thomson](https://github.com/alexandros-thomson)
+- GitHub: [@Kypria-LLC](https://github.com/Kypria-LLC)
 
 ## Acknowledgments
 

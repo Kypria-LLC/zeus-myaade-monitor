@@ -19,3 +19,5 @@ pytest-cov==4.1.0
 black==26.3.1
 flake8==6.1.0
 mypy==1.7.1
+# Browser automation
+webdriver-manager>=4.0.0

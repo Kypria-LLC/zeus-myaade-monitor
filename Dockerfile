@@ -28,7 +28,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY myaade_monitor_zeus.py .
+COPY myaade_monitor_zeus.py zeus_email_integration_v2.py ./
 
 # Create data directories
 RUN mkdir -p /app/data /app/screenshots /app/logs
