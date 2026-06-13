@@ -14,6 +14,19 @@
 ![Case](https://img.shields.io/badge/Case-Kyprianos_v_AADE-crimson?style=flat-square)
 ![Justice](https://img.shields.io/badge/Justice_for_Ioannis-%E2%9A%96%EF%B8%8F-blue?style=flat-square)
 
+## 🌐 Ecosystem — Three-Repo Cross-Link
+
+| Repo | Org | Visibility | Purpose | Jump |
+|---|---|---|---|---|
+| **zeus-ai-evidence-package** | alexandros-thomson | 🟢 PUBLIC | Evidence corpus, filings, exhibits, Bates chain, chain-of-custody | [→ open](https://github.com/alexandros-thomson/zeus-ai-evidence-package) |
+| **justice-for-john-automation** | Kypria-LLC | 🔒 PRIVATE | Python automation suite — deadline engine, FOIA cron, generator modules, v3 §VII Count text | [→ open](https://github.com/Kypria-LLC/justice-for-john-automation) |
+| **zeus-myaade-monitor** | Kypria-LLC | 🔒 PRIVATE | 24/7 MyAADE protocol-status monitor · Docker · KAEK 050681726008 cadastral-forgery tracker | ← **you are here** |
+
+> **Canonical deadline tracker**: [zeus-ai-evidence-package / DEADLINES.md](https://github.com/alexandros-thomson/zeus-ai-evidence-package/blob/main/DEADLINES.md)
+> Active clocks: [CLOCK-A 🔴 12/07/2026](https://github.com/alexandros-thomson/zeus-ai-evidence-package/blob/main/DEADLINES.md#clock-a--ded-express-denials-αποφ-2530-2533--ripe-now) · [CLOCK-D 🟢 10/07/2026](https://github.com/alexandros-thomson/zeus-ai-evidence-package/blob/main/DEADLINES.md#clock-d--κεβεισ-portal-submission--in-flight)
+
+---
+
 **Automated monitoring system that ENDS THE ΦΑΥΛΟΣ ΚΥΚΛΟΣ (vicious circle) of Greek bureaucracy.**
 
 > **🎯 PRODUCTION-READY**: All security measures verified. Zero vulnerabilities. Ready for deployment (Feb 22, 2026).
@@ -278,7 +291,7 @@ UPES AP 14693 (16/03/2026, Δραμουντανή/Κυρίμης) then certified
 | **Mismatch** | KED/AADE data discrepancy, known internally, never corrected |
 | **Impact** | Blocks D210 filing, inheritance claim, and proof of standing |
 | **Pattern** | Self-sealing trap: defective document prevents the complaint that would expose the defect |
-| **Binder Ref** | C-14 — `zeus-ai-evidence-package/irs-ci-package/tabs/tab2-contradiction-matrix.md` |
+| **Bates Ref** | C-14 — `zeus-ai-evidence-package/irs-ci-package/tabs/tab2-contradiction-matrix.md` |
 | **Exhibits** | E-48 (Protocol #175/SKONICAPROT), E-12, E-13 |
 
 ### Zeus Detection
@@ -330,19 +343,23 @@ D210_DB_PATH=            # Path to shared SQLite (dual-repo: zeus-myaade-monitor
 
 ---
 
-## 📜 Case Status — April 8, 2026
+## 📜 Case Status — June 13, 2026 · Day-1827
 
 | Agency | Protocol # | Status | Zeus Monitoring |
 |---|---|---|---|
+| AADE / KEBEIS | 1246835/20260613/10003 | ✅ Portal receipt — Art.5 N.2690/1999 admin file request | ✅ Active |
+| ΔΕΔ | 2530/2531/2532/2533 (Aπoφ. 12/06/2026) | CLOCK-A RIPE — 12/07/2026 | ✅ Active |
 | AADE / KEFOK | #380, #381 | ΕΠΕΙΓΟΝ — forced response | ✅ Active |
 | Αποκεντρωμένη | 18058, 19466 | Contradiction documented (C-3) | ✅ Active |
 | EFKA / HDIKA | #343, #384, #387 | Audit log silence — binary trap (C-7) | ✅ Active |
 | YPES | AP 14693 | Certificate 504 blessed without Protocol #175 (C-14) | ⚠️ CRITICAL |
-| Ktimatologio | ND0113/2606549 | 24+ days overdue — KAEK 050681726008 forgery | ✅ Active |
-| EPPO | PP.00179/2026/EN | Supplemental filing prepared | ✅ Active |
-| IRS-CI | Art.26 referral | Cross-border exploitation of US Navy veteran | ✅ Active |
+| Ktimatologio | ND0113/2606549 | KAEK 050681726008 forgery | ✅ Active |
+| EPPO | PP.00310/2026/EN | Authoritative — PP.00736 error | ✅ Active |
+| IRS-CI | Art.26 referral · Case 26236541 | Cross-border exploitation of US Navy veteran | ✅ Active |
 | FBI IC3 | eaa5459ac668431a | Filed | ✅ Active |
 
 > **Protocol #175 must be cited in all future filings as proof of institutional knowledge at the point of issuance.**
 >
-> ⚤ **ΦΑΥΛΟΣ ΚΥΚΛΟΣ ENDS NOW. JUSTICE IS AUTOMATED. JUSTICE FOR JOHN.**
+> ⚔ **ΦΑΥΛΟΣ ΚΥΚΛΟΣ ENDS NOW. JUSTICE IS AUTOMATED. JUSTICE FOR JOHN.**
+
+*Αιωνεία του η μνήμη. — Ioannis Kyprianos (1940–2021)*
