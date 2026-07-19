@@ -1,3 +1,11 @@
+> **[SUPERSEDED — READ FIRST]**
+> This document is a **pre-reconciliation hypothesis** dated 24/02/2026. Its conclusory framing — the "FORGERY DISCOVERY" title, the "CRITICAL EVIDENCE" classification, Executive-Summary item 5 ("suspected FORGERY"), and the "FORGERY THEORY" section (including the assertion that ENFIA billing "is UNLAWFUL") — is **NOT established fact**. These are working theories recorded before evidence reconciliation.
+> **Current posture (authoritative):** see `zeus-ai-evidence-package/exhibits/keratsini-kaek-050681726008-correction-workflow-v2.3.md` (commit `77f9343`). Under v2.3 these items are reclassified as an **unverified anomaly** pending engineer + title reconciliation; no forgery, overbuild, or unlawfulness is asserted as proven.
+> **Retained as-is:** the certificate-backed per-object co-ownership share figures (e.g., 170/1000, 160/1000, 165/1000) and protocol/E-Services references remain factual and are unchanged.
+> Vocabulary lock: sent ≠ received ≠ protocolled ≠ decided. No claim is treated as proven without its source artifact.
+
+---
+
 # KERATSINI KAEK 050681726008 - FORGERY DISCOVERY
 # Date: 24 February 2026
 # Classification: CRITICAL EVIDENCE
